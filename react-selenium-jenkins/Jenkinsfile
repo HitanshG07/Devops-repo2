@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    environment {
+        NODE_HOME = 'C:\\Program Files\\nodejs'
+        PATH = "${NODE_HOME};${env.PATH}"
+    }
+
+    stages {
+        stage('Checkout Source Code') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir('react-selenium-jenkins') {
+                    bat '''
+                        @echo off
+                        echo Installing npm dependencies...
+                        npm install
+                    '''
+                }
+            }
+        }
+
+        stage('Start React App') {
+            steps {
+                dir('react-selenium-jenkins') {
+                    bat '''
+                        @echo off
+                        echo Starting React app in background...
+                        start "react-app" cmd /c "npm start"
+                        echo Waiting for app to become available...
+                        powershell -Command "$ok=$false; for($i=0;$i -lt 30;$i++){try{Invoke-WebRequest -Uri http://localhost:3000 -UseBasicParsing -TimeoutSec 3 | Out-Null; $ok=$true; break}catch{Start-Sleep -Seconds 2}}; if(-not $ok){exit 1}"
+                    '''
+                }
+            }
+        }
+
+        stage('Run Selenium Tests') {
+            steps {
+                dir('react-selenium-jenkins') {
+                    bat '''
+                        @echo off
+                        echo Running Selenium/Mocha/Chai tests...
+                        npm run test:selenium
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            bat '''
+                @echo off
+                echo Stopping any running React dev server...
+                for /f "tokens=5" %%p in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%p >nul 2>&1
+                exit /b 0
+            '''
+        }
+    }
+}
